@@ -1,0 +1,288 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /* =========================
+       AUTH HELPERS
+       ========================= */
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.admin == true;
+    }
+
+    /* =========================
+       PACKAGE VALIDATION
+       ========================= */
+
+    function validPackage(packageId, packageName, packagePrice) {
+      return packageId is string
+        && packageId.size() > 0
+        && exists(
+          /databases/$(database)/documents/packages/$(packageId)
+        )
+        && get(
+          /databases/$(database)/documents/packages/$(packageId)
+        ).data.enabled == true
+        && get(
+          /databases/$(database)/documents/packages/$(packageId)
+        ).data.name == packageName
+        && get(
+          /databases/$(database)/documents/packages/$(packageId)
+        ).data.price == packagePrice;
+    }
+
+
+    /* =========================
+       USERS
+       ========================= */
+
+    match /users/{userId} {
+
+      /* Admin can read all users.
+         A user can read only their own profile. */
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+        );
+
+      /* User can create only their own profile. */
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.role == "user";
+
+      /* Admin has full control.
+         Normal users can only change their name.
+         Sensitive fields such as role, uid, email,
+         publicUserId and blocked cannot be changed. */
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data.diff(resource.data)
+               .affectedKeys()
+               .hasOnly(["name"])
+        );
+
+      /* Only admin can delete users. */
+      allow delete: if isAdmin();
+    }
+
+
+    /* =========================
+       ADS
+       ========================= */
+
+    match /ads/{adId} {
+
+      /* Public ads can be browsed. */
+      allow read: if true;
+
+      /*
+       * Ad + Payment are created together in one batch.
+       *
+       * This verifies:
+       * - authenticated owner
+       * - uid/userId/ownerUid all belong to current user
+       * - ad starts pending
+       * - valid Firebase package
+       * - payment document exists in same atomic batch
+       * - payment belongs to same user/ad/package
+       * - payment amount matches real package price
+       */
+      allow create: if isSignedIn()
+
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.ownerUid == request.auth.uid
+
+        && request.resource.data.status == "pending"
+        && request.resource.data.paymentStatus == "pending"
+        && request.resource.data.adminApproved == false
+
+        && request.resource.data.packageId is string
+        && request.resource.data.packageName is string
+        && request.resource.data.packagePrice is number
+
+        && validPackage(
+          request.resource.data.packageId,
+          request.resource.data.packageName,
+          request.resource.data.packagePrice
+        )
+
+        && request.resource.data.paymentId is string
+        && request.resource.data.paymentId.size() > 0
+
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.adId == adId
+
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.userId == request.auth.uid
+
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.packageId == request.resource.data.packageId
+
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.amount == request.resource.data.packagePrice;
+
+
+      /*
+       * Admin can modify ads.
+       *
+       * Normal users can ONLY increase likes by exactly 1.
+       * They cannot change:
+       * - package
+       * - price
+       * - status
+       * - paymentStatus
+       * - adminApproved
+       * - uid
+       * - ownerUid
+       * - paymentId
+       * - user information
+       */
+      allow update: if isAdmin()
+
+        || (
+          isSignedIn()
+          && request.resource.data.diff(resource.data)
+               .affectedKeys()
+               .hasOnly(["likes"])
+          && request.resource.data.likes == resource.data.likes + 1
+        );
+
+      /* Only admin can delete advertisements. */
+      allow delete: if isAdmin();
+    }
+
+    /* =========================
+       LIKES
+       ========================= */
+
+    match /likes/{likeId} {
+      allow read: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.adId is string
+        && request.resource.data.adId.size() > 0
+        && likeId == request.auth.uid + "_" + request.resource.data.adId;
+
+      allow update, delete: if false;
+    }
+
+
+
+    /* =========================
+       PAYMENTS
+       ========================= */
+
+    match /payments/{paymentId} {
+
+      /*
+       * Payment records are private.
+       * Only admin can read them.
+       */
+      allow read: if isAdmin();
+
+      /*
+       * Payment must be created by the authenticated user
+       * and must be part of the same atomic batch as the ad.
+       */
+      allow create: if isSignedIn()
+
+        && request.resource.data.userId == request.auth.uid
+
+        && request.resource.data.adId is string
+        && request.resource.data.adId.size() > 0
+
+        && request.resource.data.packageId is string
+        && request.resource.data.packageName is string
+        && request.resource.data.amount is number
+
+        && validPackage(
+          request.resource.data.packageId,
+          request.resource.data.packageName,
+          request.resource.data.amount
+        )
+
+        && request.resource.data.status == "pending"
+        && request.resource.data.paymentStatus == "receipt_submitted"
+        && request.resource.data.adminApproved == false
+        && request.resource.data.receiptSentViaWhatsApp == true
+
+        && request.resource.data.reference is string
+        && request.resource.data.reference.size() > 0
+
+        && getAfter(
+          /databases/$(database)/documents/ads/$(request.resource.data.adId)
+        ).data.paymentId == paymentId
+
+        && getAfter(
+          /databases/$(database)/documents/ads/$(request.resource.data.adId)
+        ).data.uid == request.auth.uid
+
+        && getAfter(
+          /databases/$(database)/documents/ads/$(request.resource.data.adId)
+        ).data.packageId == request.resource.data.packageId;
+
+
+      /* Only admin can approve/reject payments. */
+      allow update: if isAdmin();
+
+      /* Only admin can delete payment records. */
+      allow delete: if isAdmin();
+    }
+
+
+    /* =========================
+       CATEGORIES
+       ========================= */
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+
+    /* =========================
+       PACKAGES
+       ========================= */
+
+    match /packages/{packageId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+
+    /* =========================
+       SETTINGS
+       ========================= */
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+
+    /* =========================
+       DENY EVERYTHING ELSE
+       ========================= */
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
