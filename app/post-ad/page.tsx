@@ -46,21 +46,21 @@ const districts = [
 
 const defaultPackages = [
   {
-    id: "normal",
+    id: "3oGhotT7IdAYgXT51t6C",
     name: "Normal",
     price: 100,
     description: "Standard advertisement package",
     color: "border-blue-200 bg-blue-50",
   },
   {
-    id: "premium",
+    id: "3ktPa8Nj3ObQzQeJPR3e",
     name: "Premium",
     price: 500,
     description: "Better visibility for your advertisement",
     color: "border-yellow-200 bg-yellow-50",
   },
   {
-    id: "vip",
+    id: "KSA01r2fOon2ucLb8PTX",
     name: "VIP",
     price: 1000,
     description: "Maximum visibility and priority placement",
