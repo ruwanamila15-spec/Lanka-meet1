@@ -247,100 +247,139 @@ export default function PostAdPage() {
       return;
     }
 
-    try {
-      setSubmitting(true);
-      setUploading(true);
+      try {
+        setSubmitting(true);
+        setUploading(true);
 
-      setMessage("Optimizing photo...");
+        const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
+        const isSupportedOriginal =
+          photo.type === "image/jpeg" ||
+          photo.type === "image/png" ||
+          photo.type === "image/webp";
 
-      const optimizedPhoto = await new Promise<File>(
-        (resolve, reject) => {
-          const img = new Image();
-          const canvas = document.createElement("canvas");
-          const url = URL.createObjectURL(photo);
+        let optimizedPhoto: File;
 
-          img.onload = () => {
-            URL.revokeObjectURL(url);
+        if (photo.size <= MAX_UPLOAD_SIZE && isSupportedOriginal) {
+          optimizedPhoto = photo;
+        } else {
+          setMessage("Optimizing photo...");
 
-            const maxSize = 2000;
+          optimizedPhoto = await new Promise<File>(async (resolve, reject) => {
+            let bitmap: ImageBitmap | null = null;
+            let objectUrl: string | null = null;
 
-            let width = img.naturalWidth;
-            let height = img.naturalHeight;
-
-            if (width > maxSize || height > maxSize) {
-              if (width > height) {
-                height = Math.round(
-                  (height * maxSize) / width
-                );
-                width = maxSize;
-              } else {
-                width = Math.round(
-                  (width * maxSize) / height
-                );
-                height = maxSize;
-              }
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-
-            const ctx = canvas.getContext("2d");
-
-            if (!ctx) {
-              reject(
-                new Error("Unable to process photo.")
-              );
-              return;
-            }
-
-            ctx.drawImage(
-              img,
-              0,
-              0,
-              width,
-              height
-            );
-
-            canvas.toBlob(
-              (blob) => {
-                if (!blob) {
-                  reject(
-                    new Error(
-                      "Unable to optimize photo."
-                    )
-                  );
-                  return;
+            try {
+              if ("createImageBitmap" in window) {
+                try {
+                  bitmap = await createImageBitmap(photo);
+                } catch {
+                  bitmap = null;
                 }
+              }
 
-                const newFile = new File(
-                  [blob],
-                  "lanka-meet-photo.jpg",
-                  {
-                    type: "image/jpeg",
-                    lastModified: Date.now(),
+              const canvas = document.createElement("canvas");
+              let width = 0;
+              let height = 0;
+              let source: CanvasImageSource;
+
+              if (bitmap) {
+                width = bitmap.width;
+                height = bitmap.height;
+                source = bitmap;
+              } else {
+                const img = new Image();
+                objectUrl = URL.createObjectURL(photo);
+
+                await new Promise<void>((imgResolve, imgReject) => {
+                  img.onload = () => {
+                    width = img.naturalWidth;
+                    height = img.naturalHeight;
+                    source = img;
+                    imgResolve();
+                  };
+                  img.onerror = () =>
+                    imgReject(new Error("Unable to read this photo. Please try another photo."));
+                  img.src = objectUrl!;
+                });
+              }
+
+              if (!width || !height) {
+                throw new Error("Unable to read this photo. Please try another photo.");
+              }
+
+              const maxDimension = 3000;
+
+              if (width > maxDimension || height > maxDimension) {
+                if (width > height) {
+                  height = Math.round((height * maxDimension) / width);
+                  width = maxDimension;
+                } else {
+                  width = Math.round((width * maxDimension) / height);
+                  height = maxDimension;
+                }
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+
+              const ctx = canvas.getContext("2d");
+              if (!ctx) throw new Error("Unable to process photo.");
+
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = "high";
+              ctx.drawImage(source!, 0, 0, width, height);
+
+              if (bitmap) {
+                bitmap.close();
+                bitmap = null;
+              }
+
+              if (objectUrl) {
+                URL.revokeObjectURL(objectUrl);
+                objectUrl = null;
+              }
+
+              let finalBlob = await new Promise<Blob | null>((r) =>
+                canvas.toBlob(r, "image/jpeg", 0.92)
+              );
+
+              if (!finalBlob) throw new Error("Unable to optimize photo.");
+
+              if (finalBlob.size > MAX_UPLOAD_SIZE) {
+                for (const quality of [0.88, 0.84, 0.80, 0.76, 0.72]) {
+                  const smaller = await new Promise<Blob | null>((r) =>
+                    canvas.toBlob(r, "image/jpeg", quality)
+                  );
+
+                  if (smaller && smaller.size <= MAX_UPLOAD_SIZE) {
+                    finalBlob = smaller;
+                    break;
                   }
-                );
 
-                resolve(newFile);
-              },
-              "image/jpeg",
-              0.88
-            );
-          };
+                  if (smaller && smaller.size < finalBlob.size) {
+                    finalBlob = smaller;
+                  }
+                }
+              }
 
-          img.onerror = () => {
-            URL.revokeObjectURL(url);
+              if (finalBlob.size > MAX_UPLOAD_SIZE) {
+                throw new Error("This photo is too large to process. Please choose a smaller photo.");
+              }
 
-            reject(
-              new Error(
-                "Unable to read selected photo."
-              )
-            );
-          };
-
-          img.src = url;
+              resolve(
+                new File([finalBlob], "lanka-meet-photo.jpg", {
+                  type: "image/jpeg",
+                  lastModified: Date.now(),
+                })
+              );
+            } catch (error) {
+              if (bitmap) bitmap.close();
+              if (objectUrl) URL.revokeObjectURL(objectUrl);
+              reject(error);
+            }
+          });
         }
-      );
+
 
       setMessage("Uploading photo...");
 
@@ -755,17 +794,6 @@ export default function PostAdPage() {
                     return;
                   }
 
-                  if (
-                    file.size >
-                    10 * 1024 * 1024
-                  ) {
-                    setMessage(
-                      "Photo must be smaller than 10MB."
-                    );
-
-                    setPhoto(null);
-                    return;
-                  }
 
                   setMessage("");
                   setPhoto(file);
