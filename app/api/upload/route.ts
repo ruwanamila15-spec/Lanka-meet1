@@ -23,13 +23,16 @@ export async function POST(request: Request) {
       );
     }
 
-
     const decodedToken = await getAuth(adminApp).verifyIdToken(idToken);
+
     const rateLimitKey = `upload:${decodedToken.uid}`;
 
     if (!rateLimit(rateLimitKey, 5, 60 * 1000)) {
       return NextResponse.json(
-        { error: "Too many image uploads. Please try again in a minute." },
+        {
+          error:
+            "Too many image uploads. Please try again in a minute.",
+        },
         { status: 429 }
       );
     }
@@ -140,16 +143,22 @@ export async function POST(request: Request) {
     );
 
     if (!response.ok) {
-      const result = await response.json().catch(() => null);
+      const responseText = await response.text();
 
       console.error(
         "IMAGEKIT UPLOAD ERROR:",
         response.status,
-        result
+        responseText
       );
 
       return NextResponse.json(
-        { error: "Image upload failed." },
+        {
+          error: "Image upload failed.",
+          details:
+            process.env.NODE_ENV === "development"
+              ? responseText
+              : undefined,
+        },
         { status: 502 }
       );
     }
@@ -157,6 +166,11 @@ export async function POST(request: Request) {
     const result = await response.json();
 
     if (!result?.url) {
+      console.error(
+        "IMAGEKIT RESPONSE HAS NO URL:",
+        result
+      );
+
       return NextResponse.json(
         { error: "Image upload failed." },
         { status: 502 }
@@ -172,9 +186,25 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("UPLOAD API ERROR:", error);
 
+    console.error(
+      "UPLOAD API ERROR DETAILS:",
+      error instanceof Error
+        ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          }
+        : error
+    );
+
     return NextResponse.json(
-      { error: "Unauthorized or image upload failed." },
-      { status: 401 }
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unauthorized or image upload failed.",
+      },
+      { status: 500 }
     );
   }
 }
