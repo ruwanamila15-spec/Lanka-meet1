@@ -399,27 +399,58 @@ export default function PaymentPage() {
        * Both documents are created together.
        * There is NO payment update after creation.
        */
-      console.log(
-        "STEP 1: BATCH CREATING PAYMENT + AD"
-      );
+      console.log("STEP 1: BATCH CREATING PAYMENT + AD");
+
+      console.log("PAYMENT DEBUG:", {
+        paymentId: paymentRef.id,
+        adId: adRef.id,
+        packageId: packageData.id,
+        packageName: packageData.name,
+        packagePrice: packageData.price,
+        paymentAmount: paymentData.amount,
+        adPackageId: firestoreAd.packageId,
+        adPackageName: firestoreAd.packageName,
+        adPackagePrice: firestoreAd.packagePrice,
+        uid: user.uid,
+      });
+
+      if (!packageData.id) {
+        throw new Error("Package ID is missing. Please go back and select the package again.");
+      }
+
+      const packageRef = doc(db, "packages", packageData.id);
+      const packageSnap = await getDoc(packageRef);
+
+      if (!packageSnap.exists()) {
+        throw new Error("Selected package was not found in Firebase. Package ID: " + packageData.id);
+      }
+
+      const firebasePackage = packageSnap.data();
+
+      console.log("FIREBASE PACKAGE DEBUG:", {
+        id: packageData.id,
+        name: firebasePackage.name,
+        price: firebasePackage.price,
+        enabled: firebasePackage.enabled,
+      });
+
+      if (firebasePackage.enabled !== true) {
+        throw new Error("Selected package is disabled. Package: " + (firebasePackage.name || packageData.name));
+      }
+
+      if (firebasePackage.name !== packageData.name || Number(firebasePackage.price) !== Number(packageData.price)) {
+        throw new Error("Package information mismatch. Firebase: " + firebasePackage.name + " / " + firebasePackage.price + ", Selected: " + packageData.name + " / " + packageData.price);
+      }
 
       const batch = writeBatch(db);
 
-      batch.set(
-        paymentRef,
-        paymentData
-      );
-
-      batch.set(
-        adRef,
-        firestoreAd
-      );
+      batch.set(paymentRef, paymentData);
+      batch.set(adRef, firestoreAd);
 
       await batch.commit();
 
-      console.log(
-        "STEP 1 SUCCESS: PAYMENT + AD CREATED"
-      );
+      console.log("STEP 1 SUCCESS: PAYMENT + AD CREATED");
+
 
       /*
        * UPDATE LOCAL STORAGE
