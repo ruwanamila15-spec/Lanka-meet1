@@ -89,6 +89,7 @@ export default function PostAdPage() {
 
   const [mobileNumber, setMobileNumber] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [videoCallAvailable, setVideoCallAvailable] = useState(false);
 
   const [packageName, setPackageName] = useState("Normal");
   const [packages, setPackages] = useState<PackageItem[]>(defaultPackages);
@@ -454,6 +455,7 @@ export default function PostAdPage() {
 
         mobileNumber: mobile,
         whatsappNumber: whatsapp,
+        videoCallAvailable,
 
         photoUrl,
         photoName: photo.name,
@@ -726,6 +728,27 @@ export default function PostAdPage() {
               <p className="mt-3 rounded-lg bg-purple-50 px-3 py-2 text-[10px] font-semibold text-purple-700">
                 ℹ️ At least one of Mobile Number or WhatsApp Number is required.
               </p>
+            </div>
+
+            {/* VIDEO CALL OPT-IN */}
+            <div className="mt-5 rounded-xl border border-purple-200 bg-purple-50 p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={videoCallAvailable}
+                  onChange={(e) => setVideoCallAvailable(e.target.checked)}
+                  className="mt-1 h-4 w-4 accent-purple-700"
+                />
+                <span>
+                  <span className="block text-sm font-bold text-purple-900">
+                    📹 I’m open to video calls
+                  </span>
+                  <span className="mt-1 block text-xs text-purple-700">
+                    If your ad is approved and paid, it can appear in Live Cam.
+                    Calls take place outside Lanka Meet using your contact details.
+                  </span>
+                </span>
+              </label>
             </div>
 
             {/* ABOUT */}
