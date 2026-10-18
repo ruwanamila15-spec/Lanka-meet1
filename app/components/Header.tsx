@@ -70,6 +70,13 @@ export default function Header() {
 
         <div className="hidden items-center gap-2 md:flex">
           <Link
+            href="/live-cam"
+            className="rounded-lg bg-white px-4 py-2 text-[10px] font-bold text-purple-700"
+          >
+            📹 Live Cam
+          </Link>
+
+          <Link
             href="/login"
             className="rounded-lg bg-white px-4 py-2 text-[10px] font-bold text-purple-700"
           >
@@ -131,6 +138,14 @@ export default function Header() {
                 className="rounded-xl bg-purple-50 px-4 py-3 text-sm font-bold text-purple-700"
               >
                 📂 Categories / Ads
+              </Link>
+
+              <Link
+                href="/live-cam"
+                onClick={() => setMenuOpen(false)}
+                className="rounded-xl bg-purple-50 px-4 py-3 text-sm font-bold text-purple-700"
+              >
+                📹 Live Cam
               </Link>
 
               <Link
