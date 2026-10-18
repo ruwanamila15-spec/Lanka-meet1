@@ -2,20 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { useRouter } from "next/navigation";
 
 export default function Header() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      setAuthReady(true);
 
       if (!currentUser) {
         setIsAdmin(false);
@@ -23,142 +25,143 @@ export default function Header() {
       }
 
       try {
-        const tokenResult = await currentUser.getIdTokenResult(true);
-        setIsAdmin(tokenResult.claims.admin === true);
-      } catch (error) {
-        console.error("HEADER ADMIN CLAIM CHECK ERROR:", error);
+        const token = await currentUser.getIdTokenResult();
+        setIsAdmin(token.claims.admin === true);
+      } catch {
         setIsAdmin(false);
       }
     });
   }, []);
 
-  const handlePostAd = () => {
-    setMenuOpen(false);
+  const closeMenu = () => setMenuOpen(false);
 
-    if (user) {
-      router.push("/post-ad");
-    } else {
-      router.push("/login?redirect=/post-ad");
+  const handlePostAd = () => {
+    closeMenu();
+    router.push(user ? "/post-ad" : "/login?redirect=/post-ad");
+  };
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    closeMenu();
+
+    try {
+      await signOut(auth);
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      console.error("Logout failed:", error);
+      alert("Logout failed. Please try again.");
+    } finally {
+      setLoggingOut(false);
     }
   };
 
+  const linkClass =
+    "rounded-lg px-3 py-2 text-sm font-semibold transition hover:bg-white/15 hover:text-white";
+
   return (
-    <header className="bg-purple-700 text-white shadow-sm">
-      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-0 sm:px-2">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-800 text-xl"
-          >
-            ☰
-          </button>
+    <header className="sticky top-0 z-50 border-b border-white/20 bg-gradient-to-r from-purple-800 to-pink-600 text-white shadow-md">
+      <div className="mx-auto flex min-h-[68px] max-w-7xl items-center justify-between gap-3 px-3 sm:px-5">
+        <Link href="/" onClick={closeMenu} className="flex shrink-0 items-center gap-2">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-700 to-pink-500 text-xl text-white shadow">
+            ♥
+          </span>
+          <span>
+            <span className="block text-lg font-extrabold leading-tight tracking-tight">
+              Lanka <span className="text-purple-700">Meet</span>
+            </span>
+            <span className="block text-[10px] text-slate-500">
+              Sri Lanka Personal Ads
+            </span>
+          </span>
+        </Link>
 
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-lg">
-              💕
-            </div>
-
-            <div>
-              <div className="text-base font-extrabold">Lanka Meet</div>
-              <div className="text-[8px] text-white/75">
-                Sri Lanka Personal Ads
-              </div>
-            </div>
+        <nav className="hidden items-center gap-1 md:flex">
+          <Link href="/" className={linkClass}>Home</Link>
+          <Link href="/ads" className={linkClass}>Ads</Link>
+          <Link href="/live-cam" className={linkClass}>
+            <span className="mr-1 text-red-500">●</span> Live Cam
           </Link>
-        </div>
+          {user && <Link href="/profile" className={linkClass}>My Profile</Link>}
+          {isAdmin && <Link href="/admin" className={linkClass}>Admin</Link>}
+        </nav>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Link
-            href="/live-cam"
-            className="rounded-lg bg-white px-4 py-2 text-[10px] font-bold text-purple-700"
-          >
-            📹 Live Cam
-          </Link>
-
-          <Link
-            href="/login"
-            className="rounded-lg bg-white px-4 py-2 text-[10px] font-bold text-purple-700"
-          >
-            🔐 Login / Register
-          </Link>
-
           <button
             type="button"
             onClick={handlePostAd}
-            className="rounded-lg bg-purple-900 px-4 py-2 text-[10px] font-bold text-white"
+            className="rounded-xl bg-purple-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-purple-800"
           >
             + Post Ad
           </button>
+
+          {!authReady ? (
+            <span className="px-3 py-2 text-sm text-slate-400">Loading...</span>
+          ) : user ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold hover:bg-slate-50 disabled:opacity-50"
+            >
+              {loggingOut ? "Logging out..." : "Logout"}
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="rounded-xl border border-purple-200 px-4 py-2.5 text-sm font-bold text-purple-800 hover:bg-purple-50"
+            >
+              Login / Register
+            </Link>
+          )}
         </div>
 
         <button
           type="button"
-          onClick={handlePostAd}
-          className="rounded-lg bg-purple-900 px-3 py-2 text-[9px] font-bold text-white md:hidden"
+          aria-label="Toggle navigation menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/40 text-xl text-white hover:bg-white/10 md:hidden"
         >
-          + Ad
+          {menuOpen ? "✕" : "☰"}
         </button>
       </div>
 
       {menuOpen && (
-        <div className="border-t border-purple-500 bg-white text-gray-900 shadow-lg">
-          <div className="mx-auto max-w-6xl px-3 py-3 sm:px-4">
-            <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+        <nav className="border-t border-white/20 bg-purple-950 p-3 text-white shadow-lg md:hidden">
+          <div className="mx-auto grid max-w-7xl gap-2">
+            <Link href="/" onClick={closeMenu} className={linkClass}>🏠 Home</Link>
+            <Link href="/ads" onClick={closeMenu} className={linkClass}>📂 Ads</Link>
+            <Link href="/live-cam" onClick={closeMenu} className={linkClass}>📹 Live Cam</Link>
+            {user && <Link href="/profile" onClick={closeMenu} className={linkClass}>👤 My Profile</Link>}
+            {isAdmin && <Link href="/admin" onClick={closeMenu} className={linkClass}>🛡️ Admin Panel</Link>}
 
-              <Link
-                href="/login"
-                onClick={() => setMenuOpen(false)}
-                className="rounded-xl bg-purple-50 px-4 py-3 text-sm font-bold text-purple-700"
-              >
-                🔐 Login / Register
-              </Link>
+            <button
+              type="button"
+              onClick={handlePostAd}
+              className="rounded-lg bg-purple-700 px-3 py-3 text-left font-bold text-white"
+            >
+              + Post Ad
+            </button>
 
-              {isAdmin && (
-                <Link
-                  href="/admin"
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700"
-                >
-                  🛡️ Admin Panel
-                </Link>
-              )}
-
+            {!authReady ? (
+              <p className="px-3 py-2 text-sm text-slate-500">Checking login...</p>
+            ) : user ? (
               <button
                 type="button"
-                onClick={handlePostAd}
-                className="rounded-xl bg-purple-50 px-4 py-3 text-left text-sm font-bold text-purple-700"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="rounded-lg border border-slate-200 px-3 py-3 text-left font-bold"
               >
-                ➕ Post an Ad
+                {loggingOut ? "Logging out..." : "Logout"}
               </button>
-
-              <Link
-                href="/ads"
-                onClick={() => setMenuOpen(false)}
-                className="rounded-xl bg-purple-50 px-4 py-3 text-sm font-bold text-purple-700"
-              >
-                📂 Categories / Ads
+            ) : (
+              <Link href="/login" onClick={closeMenu} className="rounded-lg bg-purple-50 px-3 py-3 font-bold text-purple-800">
+                🔐 Login / Register
               </Link>
-
-              <Link
-                href="/live-cam"
-                onClick={() => setMenuOpen(false)}
-                className="rounded-xl bg-purple-50 px-4 py-3 text-sm font-bold text-purple-700"
-              >
-                📹 Live Cam
-              </Link>
-
-              <Link
-                href="/portal/how-to-post"
-                onClick={() => setMenuOpen(false)}
-                className="rounded-xl bg-purple-50 px-4 py-3 text-sm font-bold text-purple-700"
-              >
-                📝 How to Post an Ad
-              </Link>
-
-            </div>
+            )}
           </div>
-        </div>
+        </nav>
       )}
     </header>
   );
