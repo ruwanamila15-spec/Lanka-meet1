@@ -775,7 +775,7 @@ export default function PostAdPage() {
             </div>
 
             {/* VIDEO CALL OPT-IN */}
-            <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-4">
+<div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-4">
               <label className="flex cursor-pointer items-start gap-3">
                 <input
                   type="checkbox"
