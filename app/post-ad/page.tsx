@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, getDocs } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
 
 const categories = [
@@ -46,21 +46,21 @@ const districts = [
 
 const defaultPackages = [
   {
-    id: "3oGhotT7IdAYgXT51t6C",
+    id: "normal",
     name: "Normal",
     price: 100,
     description: "Standard advertisement package",
     color: "border-blue-200 bg-blue-50",
   },
   {
-    id: "3ktPa8Nj3ObQzQeJPR3e",
+    id: "premium",
     name: "Premium",
     price: 500,
     description: "Better visibility for your advertisement",
     color: "border-yellow-200 bg-yellow-50",
   },
   {
-    id: "KSA01r2fOon2ucLb8PTX",
+    id: "vip",
     name: "VIP",
     price: 1000,
     description: "Maximum visibility and priority placement",
@@ -74,6 +74,7 @@ type PackageItem = {
   description?: string;
   color?: string;
   enabled?: boolean;
+  type?: string;
 };
 
 export default function PostAdPage() {
@@ -89,6 +90,7 @@ export default function PostAdPage() {
 
   const [mobileNumber, setMobileNumber] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [videoCallAvailable, setVideoCallAvailable] = useState(false);
 
   const [packageName, setPackageName] = useState("Normal");
   const [packages, setPackages] = useState<PackageItem[]>(defaultPackages);
@@ -98,6 +100,13 @@ export default function PostAdPage() {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
+  const [isSubscriptionMode, setIsSubscriptionMode] = useState(false);
+
+  useEffect(() => {
+    setIsSubscriptionMode(
+      new URLSearchParams(window.location.search).get("mode") === "subscription"
+    );
+  }, []);
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -127,9 +136,10 @@ export default function PostAdPage() {
                 data.color || "border-gray-200 bg-gray-50"
               ),
               enabled: data.enabled !== false,
+              type: String(data.type || "per_ad"),
             };
           })
-          .filter((item) => item.enabled !== false)
+          .filter((item) => item.enabled !== false && item.type !== "subscription")
           .sort((a, b) => a.price - b.price);
 
         if (firebasePackages.length > 0) {
@@ -454,6 +464,7 @@ export default function PostAdPage() {
 
         mobileNumber: mobile,
         whatsappNumber: whatsapp,
+        videoCallAvailable,
 
         photoUrl,
         photoName: photo.name,
@@ -468,6 +479,70 @@ export default function PostAdPage() {
 
         createdAt: new Date().toISOString(),
       };
+
+      if (isSubscriptionMode) {
+        const currentUser = auth.currentUser;
+
+        if (!currentUser) {
+          throw new Error("Please login before posting an advertisement.");
+        }
+
+        const userSnapshot = await getDoc(
+          doc(db, "users", currentUser.uid)
+        );
+
+        if (!userSnapshot.exists()) {
+          throw new Error("User profile not found. Please login again.");
+        }
+
+        const userData = userSnapshot.data();
+        const subscription = userData.subscription;
+
+        if (!subscription || subscription.status !== "active") {
+          throw new Error("You do not have an active Monthly Subscription.");
+        }
+
+        const expiry = typeof subscription.endAt?.toDate === "function"
+          ? subscription.endAt.toDate()
+          : new Date(subscription.endAt);
+
+        if (!Number.isFinite(expiry.getTime()) || expiry.getTime() <= Date.now()) {
+          throw new Error("Your Monthly Subscription has expired. Please renew it.");
+        }
+
+        const adsLimit = Number(subscription.adsLimit || 30);
+        const adsUsed = Number(subscription.adsUsed || 0);
+
+        if (adsUsed >= adsLimit) {
+          throw new Error("You have used all 30 advertisements in this subscription period.");
+        }
+
+        const subscriptionPaymentId = String(subscription.paymentId || "");
+        const subscriptionPackageId = String(subscription.packageId || "");
+
+        if (!subscriptionPaymentId || !subscriptionPackageId) {
+          throw new Error("Subscription payment details are incomplete. Please contact Admin.");
+        }
+
+        await addDoc(collection(db, "ads"), {
+          ...adData,
+          uid: currentUser.uid,
+          userId: currentUser.uid,
+          ownerUid: currentUser.uid,
+          packageName: subscription.packageName || "Monthly Subscription",
+          packageId: subscriptionPackageId,
+          packagePrice: Number(subscription.price || 3000),
+          paymentType: "subscription",
+          subscriptionPaymentId,
+          paymentStatus: "paid",
+          status: "pending",
+          adminApproved: false,
+        });
+
+        setMessage("Advertisement submitted successfully. It is waiting for Admin approval.");
+        router.push("/profile");
+        return;
+      }
 
       localStorage.setItem(
         "lankaMeetAd",
@@ -502,36 +577,7 @@ export default function PostAdPage() {
 
   return (
     <main className="min-h-screen bg-gray-100 text-gray-900">
-      {/* HEADER */}
-      <header className="sticky top-0 z-50 bg-purple-700 text-white shadow-lg">
-        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
-          <Link
-            href="/"
-            className="flex items-center gap-2"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-lg">
-              💕
-            </div>
 
-            <div>
-              <div className="text-lg font-extrabold">
-                Lanka Meet
-              </div>
-
-              <div className="text-[9px] text-white/80">
-                Sri Lanka Personal Ads
-              </div>
-            </div>
-          </Link>
-
-          <Link
-            href="/ads"
-            className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-purple-700"
-          >
-            Browse Ads
-          </Link>
-        </div>
-      </header>
 
       {/* PAGE */}
       <section className="px-4 py-6 sm:py-10">
@@ -728,6 +774,29 @@ export default function PostAdPage() {
               </p>
             </div>
 
+            {/* VIDEO CALL OPT-IN */}
+            <div className="mt-4 rounded-2xl border border-purple-200 bg-purple-50 p-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={videoCallAvailable}
+                  onChange={(event) => setVideoCallAvailable(event.target.checked)}
+                  className="mt-1 h-5 w-5 shrink-0 accent-purple-700"
+                />
+                <span>
+                  <span className="block text-sm font-extrabold text-purple-950">
+                    📹 I’m open to video calls
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-purple-800">
+                    Let people find your approved ad in Live Cam and contact you
+                    through your listed WhatsApp or phone number. Calls happen
+                    outside Lanka Meet. You can leave this unchecked if you are
+                    not interested.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             {/* ABOUT */}
             <div className="mt-5">
               <div className="flex items-center justify-between">
@@ -814,7 +883,16 @@ export default function PostAdPage() {
               )}
             </div>
 
+            {isSubscriptionMode && (
+              <div className="mt-7 rounded-2xl border border-purple-200 bg-purple-50 p-4">
+                <h2 className="text-base font-black text-purple-900">Monthly Subscription</h2>
+                <p className="mt-2 text-sm font-bold text-purple-800">Rs. 3,000 / 30 days</p>
+                <p className="mt-1 text-xs leading-5 text-purple-700">You can submit up to 30 advertisements during your active subscription. Each advertisement must still be approved separately by Admin. Only approved advertisements count toward your quota.</p>
+              </div>
+            )}
+
             {/* PACKAGE */}
+            {!isSubscriptionMode && (
             <div className="mt-7">
               <div className="mb-3">
                 <label className="block text-sm font-bold">
@@ -828,59 +906,69 @@ export default function PostAdPage() {
 
               <div className="space-y-3">
                 {packages.map((item) => {
-                  const selected =
-                    packageName === item.name;
+                  const selected = packageName === item.name;
+                  const packageType = item.name.toLowerCase();
+
+                  const packageIcon = packageType.includes("vip")
+                    ? "👑"
+                    : packageType.includes("premium")
+                    ? "⭐"
+                    : "🔹";
+
+                  const iconStyle = packageType.includes("vip")
+                    ? "bg-red-100 text-red-700"
+                    : packageType.includes("premium")
+                    ? "bg-yellow-100 text-yellow-700"
+                    : "bg-blue-100 text-blue-700";
 
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() =>
-                        setPackageName(item.name)
-                      }
+                      onClick={() => setPackageName(item.name)}
                       className={`w-full rounded-2xl border-2 p-4 text-left transition ${
                         selected
                           ? "border-purple-600 bg-purple-50 ring-2 ring-purple-100"
-                          : item.color ||
-                            "border-gray-200 bg-gray-50"
+                          : item.color || "border-gray-200 bg-gray-50"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-3">
-
-                        <div>
-                          <div className="text-base font-black">
-                            {item.name}
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl ${iconStyle}`}>
+                            {packageIcon}
                           </div>
 
-                          <div className="mt-1 text-[10px] text-gray-500">
-                            {item.description ||
-                              "Advertisement package"}
+                          <div className="min-w-0">
+                            <div className="text-base font-black">
+                              {item.name}
+                            </div>
+
+                            <div className="mt-1 text-[10px] text-gray-500">
+                              {item.description || "Advertisement package"}
+                            </div>
                           </div>
                         </div>
 
-                        <div className="text-right">
+                        <div className="shrink-0 text-right">
                           <div className="text-lg font-black text-purple-700">
                             Rs.{" "}
-                            {Number(
-                              item.price || 0
-                            ).toLocaleString()}
+                            {Number(item.price || 0).toLocaleString()}
                           </div>
 
                           <div className="mt-1 text-[9px] font-bold">
-                            {selected
-                              ? "✓ Selected"
-                              : "Select"}
+                            {selected ? "✓ Selected" : "Select"}
                           </div>
                         </div>
-
                       </div>
                     </button>
                   );
                 })}
               </div>
             </div>
+            )}
 
             {/* SELECTED PACKAGE */}
+            {!isSubscriptionMode && (
             <div className="mt-5 rounded-2xl bg-purple-50 p-4">
               <div className="flex items-center justify-between">
 
@@ -910,6 +998,8 @@ export default function PostAdPage() {
               </div>
             </div>
 
+            )}
+
             {/* MESSAGE */}
             {message && (
               <div
@@ -936,13 +1026,17 @@ export default function PostAdPage() {
                 ? "Uploading Photo..."
                 : submitting
                 ? "Opening Payment..."
-                : `Continue to Payment — Rs. ${Number(
+                : isSubscriptionMode
+                  ? "Submit Advertisement — Subscription"
+                  : `Continue to Payment — Rs. ${Number(
                     selectedPackage.price || 0
                   ).toLocaleString()}`}
             </button>
 
             <p className="mt-3 text-center text-[10px] leading-5 text-gray-500">
-              After submitting, your photo will be uploaded securely and you will be taken to the payment page.
+              {isSubscriptionMode
+                ? "Your advertisement will be submitted for Admin approval. No additional per-ad payment is required."
+                : "After submitting, your photo will be uploaded securely and you will be taken to the payment page."}
             </p>
 
           </form>

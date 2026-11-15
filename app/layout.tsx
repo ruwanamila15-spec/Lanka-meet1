@@ -14,9 +14,52 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl = "https://lanka-meet1.vercel.app";
+
 export const metadata: Metadata = {
-  title: "Lanka Meet",
-  description: "Sri Lanka Personal Ads",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Lanka Meet | Sri Lanka Personal Ads & Friendship",
+    template: "%s | Lanka Meet",
+  },
+  description:
+    "Discover personal ads, friendship connections, marriage ads and social connections across Sri Lanka on Lanka Meet. Browse listings and connect responsibly.",
+  applicationName: "Lanka Meet",
+  keywords: [
+    "Lanka Meet",
+    "Sri Lanka personal ads",
+    "Sri Lanka friendship ads",
+    "Sri Lanka marriage ads",
+    "personal ads Sri Lanka",
+    "friendship Sri Lanka",
+    "Sri Lanka social connections",
+  ],
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_LK",
+    url: siteUrl,
+    siteName: "Lanka Meet",
+    title: "Lanka Meet | Sri Lanka Personal Ads & Friendship",
+    description:
+      "Explore personal ads, friendship listings and social connections across Sri Lanka.",
+  },
+  twitter: {
+    card: "summary",
+    title: "Lanka Meet | Sri Lanka Personal Ads & Friendship",
+    description:
+      "Explore personal ads, friendship listings and social connections across Sri Lanka.",
+  },
 };
 
 export default function RootLayout({

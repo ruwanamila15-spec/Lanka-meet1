@@ -1,0 +1,13 @@
+# Backup files - do not upload to Vercel
+**/*.backup*
+**/*.before-*
+**/*.bak
+**/*.broken*
+**/*.photo-backup
+**/*.tsx.backup*
+**/backups/
+backups/
+
+# Local-only Vercel environment files
+.env.local
+.env.*.local

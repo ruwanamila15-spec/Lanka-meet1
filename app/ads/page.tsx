@@ -7,7 +7,7 @@ import {
   collection,
   doc,
   getDocs,
-  orderBy,
+
   query,
   runTransaction,
   where,
@@ -46,7 +46,7 @@ const categories = [
   { name: "Friendship", icon: "👫" },
 ];
 
-const ADS_PER_PAGE = 30;
+const ADS_PER_PAGE = 40;
 
 export default function AdsPage() {
   const router = useRouter();
@@ -75,8 +75,7 @@ export default function AdsPage() {
         const q = query(
           adsRef,
           where("adminApproved", "==", true),
-          where("paymentStatus", "==", "paid"),
-          orderBy("createdAt", "desc")
+          where("paymentStatus", "==", "paid")
         );
 
         const snapshot = await getDocs(q);
@@ -191,40 +190,29 @@ export default function AdsPage() {
   const formatTime = (createdAt: any) => {
     if (!createdAt) return "";
 
-    let date: Date;
+    const date = createdAt?.seconds
+      ? new Date(createdAt.seconds * 1000)
+      : new Date(createdAt);
 
-    if (createdAt?.seconds) {
-      date = new Date(createdAt.seconds * 1000);
-    } else {
-      date = new Date(createdAt);
-    }
+    if (Number.isNaN(date.getTime())) return "";
 
-    if (Number.isNaN(date.getTime())) {
-      return "";
-    }
-
-    const diff = Date.now() - date.getTime();
+    const diff = Math.max(0, Date.now() - date.getTime());
     const minutes = Math.floor(diff / 60000);
 
     if (minutes < 1) return "Just now";
-
-    if (minutes < 60) {
-      return `${minutes} minutes ago`;
-    }
+    if (minutes < 60) return `${minutes} minutes ago`;
 
     const hours = Math.floor(minutes / 60);
-
-    if (hours < 24) {
-      return `${hours} hours ago`;
-    }
+    if (hours < 24) return `${hours} hours ago`;
 
     const days = Math.floor(hours / 24);
+    if (days < 30) return `${days} days ago`;
 
-    if (days < 30) {
-      return `${days} days ago`;
-    }
+    const months = Math.floor(days / 30);
+    if (months < 12) return `${months} months ago`;
 
-    return date.toLocaleDateString();
+    const years = Math.floor(days / 365);
+    return `${years} years ago`;
   };
 
   /* PHONE CLEAN */
@@ -319,14 +307,14 @@ export default function AdsPage() {
     if (pkg === "vip") {
       return {
         name: "VIP",
-        border: "border-red-400",
-        background: "bg-red-50",
-        softBackground: "bg-red-50",
-        badge: "bg-red-600",
-        text: "text-red-600",
-        price: "text-red-600",
-        ribbon: "bg-red-600",
-        ribbonLight: "bg-red-500",
+        border: "border-amber-400",
+        background: "bg-amber-50",
+        softBackground: "bg-amber-50",
+        badge: "bg-amber-500",
+        text: "text-amber-700",
+        price: "text-amber-700",
+        ribbon: "bg-gradient-to-b from-amber-400 to-amber-700",
+        ribbonLight: "bg-amber-400",
         icon: "♛",
       };
     }
@@ -334,14 +322,14 @@ export default function AdsPage() {
     if (pkg === "premium") {
       return {
         name: "Premium",
-        border: "border-yellow-400",
-        background: "bg-yellow-50",
-        softBackground: "bg-yellow-50",
-        badge: "bg-yellow-500",
-        text: "text-yellow-600",
-        price: "text-yellow-600",
-        ribbon: "bg-yellow-500",
-        ribbonLight: "bg-yellow-400",
+        border: "border-purple-400",
+        background: "bg-purple-50",
+        softBackground: "bg-purple-50",
+        badge: "bg-purple-600",
+        text: "text-purple-700",
+        price: "text-purple-700",
+        ribbon: "bg-gradient-to-b from-purple-500 to-purple-800",
+        ribbonLight: "bg-purple-500",
         icon: "★",
       };
     }
@@ -352,16 +340,66 @@ export default function AdsPage() {
       background: "bg-blue-50",
       softBackground: "bg-blue-50",
       badge: "bg-blue-600",
-      text: "text-blue-600",
-      price: "text-blue-600",
-      ribbon: "bg-blue-600",
+      text: "text-blue-700",
+      price: "text-blue-700",
+      ribbon: "bg-gradient-to-b from-blue-500 to-blue-800",
       ribbonLight: "bg-blue-500",
       icon: "♢",
     };
   };
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+
+      {/* ADS PAGE HERO + SEARCH */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-purple-950 to-purple-800 text-white">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-pink-500/20 blur-3xl" />
+        <div className="relative mx-auto max-w-6xl px-3 py-6 sm:px-6 sm:py-9">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-purple-200 sm:text-xs">
+                LankaMeet • Sri Lanka
+              </p>
+              <h1 className="mt-1 text-2xl font-black sm:text-4xl">
+                Explore Advertisements
+              </h1>
+              <p className="mt-1 text-[10px] text-purple-100 sm:text-sm">
+                Discover personal ads and connections near you.
+              </p>
+            </div>
+            <Link
+              href="/post-ad"
+              className="rounded-xl bg-white px-4 py-2.5 text-[10px] font-black text-purple-900 shadow-lg transition hover:bg-purple-50 sm:text-xs"
+            >
+              + Post Your Ad
+            </Link>
+          </div>
+
+          <div className="mt-5 flex max-w-2xl overflow-hidden rounded-xl border border-white/20 bg-white p-1 shadow-xl">
+            <span className="flex w-9 shrink-0 items-center justify-center text-lg text-purple-700">⌕</span>
+            <input
+              type="search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search ads, categories, districts..."
+              className="min-w-0 flex-1 bg-transparent px-2 text-xs text-slate-800 outline-none placeholder:text-slate-400 sm:text-sm"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="px-3 text-xs font-bold text-purple-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <p className="mt-3 text-[9px] font-semibold text-purple-100 sm:text-xs">
+            {loading ? "Loading advertisements..." : `${filteredAds.length} advertisements found`}
+          </p>
+        </div>
+      </section>
         {/* CATEGORY NAVIGATION */}
         <section className="border-b border-gray-200 bg-white px-3 py-2 sm:px-6">
           <div className="mx-auto max-w-6xl">
@@ -449,17 +487,17 @@ export default function AdsPage() {
                     <article
                       key={ad.id}
                       onClick={() => openAd(ad.id)}
-                      className={`relative cursor-pointer overflow-hidden rounded-xl border ${design.border} ${design.background} shadow-sm transition hover:shadow-md`}
+                      className={`relative cursor-pointer overflow-hidden rounded-3xl border-2 ${design.border} ${design.background} shadow-lg transition duration-200 hover:-translate-y-1 hover:shadow-2xl`}
                     >
-                      <div className="flex min-h-[158px] gap-2 p-1.5 sm:min-h-[184px] sm:gap-3 sm:p-2">
+                      <div className="flex min-h-[215px] gap-3 p-3 sm:min-h-[265px] sm:gap-5 sm:p-4">
 
                         {/* PHOTO */}
-                        <div className="relative h-[145px] w-[108px] shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:h-[168px] sm:w-[205px]">
+                        <div className="relative h-[194px] w-[145px] shrink-0 overflow-hidden rounded-2xl bg-slate-200 sm:h-[240px] sm:w-[260px]">
                           {imageUrl ? (
                             <img
                               src={imageUrl}
-                              alt="Personal Advertisement"
-                              className="h-full w-full object-cover"
+                              alt="Personal Advertisement" loading="lazy" decoding="async"
+                              className="h-full w-full object-cover transition duration-300 hover:scale-105" onError={(e) => { e.currentTarget.style.display = "none"; }}
                             />
                           ) : (
                             <div className="flex h-full w-full flex-col items-center justify-center bg-gray-100 text-gray-400">
@@ -662,7 +700,7 @@ export default function AdsPage() {
                 <span>VIP</span>
               </div>
 
-              <div className="flex items-center gap-1 rounded-md border border-yellow-200 bg-white px-2 py-1 text-[8px] font-bold text-yellow-600">
+              <div className="flex items-center gap-1 rounded-md border border-green-200 bg-green-600 px-2 py-1 text-[8px] font-bold text-white">
                 <span className="text-xs">★</span>
                 <span>Premium</span>
               </div>
