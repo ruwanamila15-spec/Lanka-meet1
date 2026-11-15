@@ -9,6 +9,8 @@ import {
   getDocs,
     getDoc,
   updateDoc,
+  runTransaction,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
@@ -32,6 +34,8 @@ type Ad = {
   packageName?: string;
   packagePrice?: number;
   paymentId?: string;
+  paymentType?: string;
+  subscriptionPaymentId?: string;
 };
 
 export default function AdminAdsPage() {
@@ -93,17 +97,131 @@ export default function AdminAdsPage() {
       setActionId(ad.id);
       setMessage("");
 
-      await updateDoc(doc(db, "ads", ad.id), {
-        status: "published",
-        paymentStatus: "paid",
-        adminApproved: true,
-      });
+      if (ad.paymentType === "subscription") {
+        const approved = await runTransaction(db, async (transaction) => {
+          const adRef = doc(db, "ads", ad.id);
+          const adSnapshot = await transaction.get(adRef);
 
-      setMessage("✅ Advertisement approved and published.");
+          if (!adSnapshot.exists()) {
+            throw new Error("Advertisement no longer exists.");
+          }
+
+          const adData = adSnapshot.data();
+
+          // Prevent duplicate quota increments.
+          if (adData.adminApproved === true) {
+            return false;
+          }
+
+          const ownerUid = String(
+            adData.userId || adData.ownerUid || adData.uid || ""
+          );
+
+          if (!ownerUid) {
+            throw new Error("Advertisement owner could not be identified.");
+          }
+
+          const userRef = doc(db, "users", ownerUid);
+          const userSnapshot = await transaction.get(userRef);
+
+          if (!userSnapshot.exists()) {
+            throw new Error("Advertisement owner account was not found.");
+          }
+
+          const userData = userSnapshot.data();
+          const subscription = userData.subscription;
+
+          if (!subscription || subscription.status !== "active") {
+            throw new Error("The owner's Monthly Subscription is not active.");
+          }
+
+          const paymentId = String(adData.subscriptionPaymentId || "");
+
+          if (
+            !paymentId ||
+            String(subscription.paymentId || "") !== paymentId
+          ) {
+            throw new Error("This advertisement is not linked to the owner's active subscription.");
+          }
+
+          const paymentRef = doc(db, "payments", paymentId);
+          const paymentSnapshot = await transaction.get(paymentRef);
+
+          if (!paymentSnapshot.exists()) {
+            throw new Error("The subscription payment record was not found.");
+          }
+
+          const paymentData = paymentSnapshot.data();
+
+          if (
+            paymentData.paymentType !== "subscription" ||
+            paymentData.status !== "approved" ||
+            paymentData.paymentStatus !== "paid" ||
+            paymentData.adminApproved !== true ||
+            paymentData.userId !== ownerUid
+          ) {
+            throw new Error("The subscription payment has not been approved by Admin.");
+          }
+
+          let expiryMillis = 0;
+          const endAt = subscription.endAt;
+
+          if (typeof endAt?.toMillis === "function") {
+            expiryMillis = endAt.toMillis();
+          } else if (typeof endAt?.toDate === "function") {
+            expiryMillis = endAt.toDate().getTime();
+          } else if (endAt) {
+            expiryMillis = new Date(endAt).getTime();
+          }
+
+          if (!expiryMillis || expiryMillis <= Date.now()) {
+            throw new Error("The owner's Monthly Subscription has expired.");
+          }
+
+          const adsLimit = Number(subscription.adsLimit || 30);
+          const adsUsed = Number(subscription.adsUsed || 0);
+
+          if (adsUsed >= adsLimit) {
+            throw new Error("This subscription has reached its 30-ad approval limit.");
+          }
+
+          transaction.update(adRef, {
+            status: "published",
+            paymentStatus: "paid",
+            adminApproved: true,
+            publishedAt: serverTimestamp(),
+          });
+
+          transaction.update(userRef, {
+            "subscription.adsUsed": adsUsed + 1,
+            "subscription.updatedAt": serverTimestamp(),
+          });
+
+          return true;
+        });
+
+        setMessage(
+          approved
+            ? "✅ Subscription advertisement approved. One ad has been counted."
+            : "This advertisement was already approved. The quota was not changed."
+        );
+      } else {
+        // Keep the existing per-ad package approval flow unchanged.
+        await updateDoc(doc(db, "ads", ad.id), {
+          status: "published",
+          paymentStatus: "paid",
+          adminApproved: true,
+        });
+
+        setMessage("✅ Advertisement approved and published.");
+      }
+
       await loadAds();
-    } catch (error) {
+    } catch (error: any) {
       console.error("APPROVE AD ERROR:", error);
-      setMessage("❌ Failed to approve advertisement.");
+      setMessage(
+        error?.message || "❌ Failed to approve advertisement."
+      );
     } finally {
       setActionId("");
     }

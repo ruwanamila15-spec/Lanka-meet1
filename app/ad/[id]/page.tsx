@@ -6,6 +6,8 @@ import { useParams } from "next/navigation";
 import {
   doc,
   getDoc,
+  setDoc,
+  deleteDoc,
   updateDoc,
   increment,
   runTransaction,
@@ -33,6 +35,7 @@ type AdData = {
   likes?: number;
 
   status?: string;
+  adminApproved?: boolean;
   paymentStatus?: string;
 
   createdAt?: any;
@@ -49,6 +52,7 @@ export default function AdDetailsPage() {
   const [ad, setAd] = useState<AdData | null>(null);
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -70,33 +74,46 @@ export default function AdDetailsPage() {
 
         const data = snapshot.data() as AdData;
 
+        // Only show ads that are approved by admin and fully paid.
+        if (
+          data.adminApproved !== true ||
+          data.paymentStatus !== "paid"
+        ) {
+          setAd(null);
+          setError("This advertisement is no longer available.");
+          setLoading(false);
+          return;
+        }
+
         setAd({
           ...data,
           id: snapshot.id,
         });
 
-          try {
-            const viewResponse = await fetch("/api/ad-view", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ adId: id }),
-            });
+          // Update views in the background without blocking the page.
+          void fetch("/api/ad-view", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ adId: id }),
 
-            if (viewResponse.ok) {
-              setAd((previous) =>
-                previous
-                  ? {
-                      ...previous,
-                      views: Number(previous.views || 0) + 1,
-                    }
-                  : previous
-              );
-            }
-          } catch (viewError) {
-            console.error("VIEW UPDATE ERROR:", viewError);
-          }
+          })
+            .then((viewResponse) => {
+              if (viewResponse.ok) {
+                setAd((previous) =>
+                  previous
+                    ? {
+                        ...previous,
+                        views: Number(previous.views || 0) + 1,
+                      }
+                    : previous
+                );
+              }
+            })
+            .catch((viewError) => {
+              console.error("VIEW UPDATE ERROR:", viewError);
+            });
       } catch (err) {
         console.error(
           "LOAD AD ERROR:",
@@ -165,6 +182,67 @@ export default function AdDetailsPage() {
       );
     } catch (err) {
       console.error("LIKE ERROR:", err);
+    }
+  };
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user || !id) return;
+
+    getDoc(doc(db, "savedAds", `${user.uid}_${id}`))
+      .then((snapshot) => setSaved(snapshot.exists()))
+      .catch((err) => console.error("SAVED AD LOAD ERROR:", err));
+  }, [id]);
+
+  const handleSave = async () => {
+    if (!id) return;
+
+    const user = auth.currentUser;
+    if (!user) {
+      setError("Please login to save this advertisement.");
+      return;
+    }
+
+    const savedRef = doc(db, "savedAds", `${user.uid}_${id}`);
+
+    try {
+      if (saved) {
+        await deleteDoc(savedRef);
+        setSaved(false);
+      } else {
+        await setDoc(savedRef, {
+          userId: user.uid,
+          adId: id,
+          createdAt: new Date().toISOString(),
+        });
+        setSaved(true);
+      }
+    } catch (err) {
+      console.error("SAVE AD ERROR:", err);
+      setError("Unable to save this advertisement. Please try again.");
+    }
+  };
+
+  const handleShare = async () => {
+    try {
+      const shareData = {
+        title: ad?.title || "Lanka Meet Advertisement",
+        text: "Check out this advertisement on Lanka Meet.",
+        url: window.location.href,
+      };
+
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(shareData.url);
+        setError("Advertisement link copied.");
+      }
+    } catch (err) {
+      if (err && typeof err === "object" && "name" in err && err.name === "AbortError") {
+        return;
+      }
+      console.error("SHARE ERROR:", err);
+      setError("Unable to share this advertisement.");
     }
   };
 
@@ -255,14 +333,36 @@ export default function AdDetailsPage() {
     );
   }
 
-  const imageUrl =
-    ad.photoUrl || ad.photo || "";
+  const imageUrl = ad.photoUrl || ad.photo || "";
+  const packageName = (ad.packageName || "Normal").toLowerCase();
+
+  const packageDesign =
+    packageName === "vip"
+      ? {
+          name: "VIP",
+          card: "border-red-300 bg-red-50",
+          badge: "bg-red-600 text-white",
+          accent: "text-red-700",
+        }
+      : packageName === "premium"
+      ? {
+          name: "Premium",
+          card: "border-green-300 bg-green-50",
+          badge: "bg-green-600 text-white",
+          accent: "text-green-700",
+        }
+      : {
+          name: "Normal",
+          card: "border-blue-300 bg-blue-50",
+          badge: "bg-blue-600 text-white",
+          accent: "text-blue-700",
+        };
 
   return (
-    <main className="min-h-screen bg-gray-100 text-gray-900">
+    <main className="min-h-screen bg-slate-50 text-gray-900">
 
       {/* HEADER */}
-      <header className="sticky top-0 z-50 bg-purple-700 text-white shadow-lg">
+      <header className="sticky top-0 z-50 bg-gradient-to-r from-slate-950 via-purple-950 to-purple-800 text-white shadow-lg">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4">
 
           <Link
@@ -308,7 +408,7 @@ export default function AdDetailsPage() {
           </Link>
 
           {/* MAIN CARD */}
-          <article className="overflow-hidden rounded-3xl bg-white shadow-xl">
+          <article className={`overflow-hidden rounded-3xl border-2 ${packageDesign.card} shadow-2xl shadow-purple-950/10`}>
 
             {/* PHOTO */}
             <div className="relative bg-gray-200">
@@ -317,7 +417,7 @@ export default function AdDetailsPage() {
                 <img
                   src={imageUrl}
                   alt={ad.title || "Personal advertisement"}
-                  className="block max-h-[520px] w-full object-cover"
+                  className="block h-[420px] w-full object-cover sm:h-[620px]" onError={(e) => { e.currentTarget.style.display = "none"; }}
                 />
               ) : (
                 <div className="flex h-72 items-center justify-center bg-purple-50">
@@ -344,6 +444,14 @@ export default function AdDetailsPage() {
 
             {/* CONTENT */}
             <div className="p-5 sm:p-7">
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <span className={`rounded-full px-4 py-1.5 text-xs font-black uppercase tracking-wide shadow ${packageDesign.badge}`}>
+                  {packageDesign.name} Advertisement
+                </span>
+                <span className={`text-xs font-bold ${packageDesign.accent}`}>
+                  LankaMeet
+                </span>
+              </div>
 
               {/* TITLE */}
               <div>
@@ -398,6 +506,25 @@ export default function AdDetailsPage() {
                   </span>
                 </div>
 
+              </div>
+
+              {/* SAVE + SHARE */}
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-xs font-black text-white shadow-md transition hover:bg-gray-800 active:scale-[0.98]"
+                >
+                  {saved ? "♥ Saved" : "♡ Save"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShare}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-xs font-black text-white shadow-md transition hover:bg-gray-800 active:scale-[0.98]"
+                >
+                  ↗ Share
+                </button>
               </div>
 
               {/* ABOUT */}

@@ -24,3 +24,94 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* LankaMeet lightweight advertising marquee */
+.lm-ad-marquee {
+  overflow: hidden;
+  width: 100%;
+}
+
+.lm-ad-marquee-track {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 2.5rem;
+  white-space: nowrap;
+  animation: lm-ad-scroll 32s linear infinite;
+}
+
+.lm-ad-marquee-track span {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+@keyframes lm-ad-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lm-ad-marquee-track {
+    animation: none;
+  }
+}
+
+
+/* LankaMeet Premium Purple refinements */
+html {
+  scroll-behavior: smooth;
+}
+
+.lm-ad-marquee-track {
+  will-change: transform;
+}
+
+.lm-ad-marquee-track span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+}
+
+::selection {
+  background: #7e22ce;
+  color: #ffffff;
+}
+
+@media (max-width: 640px) {
+  .lm-ad-marquee-track {
+    gap: 1.5rem;
+    animation-duration: 26s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* LankaMeet compact home animations and category slider */
+.lm-featured-banner {
+  isolation: isolate;
+}
+.lm-woman-art {
+  animation: lm-woman-float 3.5s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+@keyframes lm-woman-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.lm-category-slider {
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: #c4a1e8 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.lm-category-card {
+  scroll-snap-align: start;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lm-woman-art { animation: none; }
+}
